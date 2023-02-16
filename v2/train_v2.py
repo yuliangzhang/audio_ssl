@@ -165,7 +165,8 @@ def main(audio_dir, config_path='config_v2.yaml', d=None, epochs=None, resume=No
         moving_average_decay=cfg.ema_decay,
     )
     learner.calc_norm_stats(dl)
-    trainer = pl.Trainer(gpus=cfg.gpus, max_epochs=cfg.epochs, weights_summary=None, accelerator="ddp")
+    # trainer = pl.Trainer(gpus=cfg.gpus, max_epochs=cfg.epochs, weights_summary=None, accelerator="ddp")
+    trainer = pl.Trainer(gpus=cfg.gpus, max_epochs=cfg.epochs)
     trainer.fit(learner, dl)
     if trainer.interrupted:
         logging.info('Terminated.')
