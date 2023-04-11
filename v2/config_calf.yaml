@@ -1,0 +1,33 @@
+# Unit duration in seconds for one audio segment.
+unit_sec: 5
+# FFT parameters.
+sample_rate: 16000
+n_fft: 1024
+win_length: 1024
+hop_length: 160
+n_mels: 64
+f_min: 60
+f_max: 7800
+# Dimensions of feature representations.
+feature_d: 3072
+# BYOL parameters.
+proj_size: 256
+proj_dim: 4096
+ema_decay: 0.99
+# Training parameters.
+seed: 42
+bs: 24
+lr: 0.0001
+epochs: 500
+gpus: 1
+num_workers: 8
+# Weight pathname for resuming training.
+resume: 
+# Shape of loh-mel spectrogram [F, T].
+shape_global: [64, 500]
+shape_local: [64, 100]
+hop_size: 1.0
+win_adapt: True
+win_size: 1.2
+# Folder to store trained weight files.
+checkpoint_folder: checkpoints
