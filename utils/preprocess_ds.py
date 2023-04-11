@@ -12,6 +12,7 @@ Usage:
 
 from pathlib import Path
 import sys
+sys.path.append("/media/storage/home/22828187/work_dir/audio_ssl/")
 import os
 import numpy as np
 import scipy as scipy
@@ -23,9 +24,9 @@ import glob
 import random
 from tqdm import tqdm
 import fire
-from . import flatten_list
-from .convert_wav import convert_wav
-
+# from . import flatten_list
+# from .convert_wav import convert_wav
+from convert_wav import convert_wav
 
 # UrbanSound8K https://urbansounddataset.weebly.com/urbansound8k.html
 
@@ -149,7 +150,14 @@ def spcv2(root):
     convert_wav(root, 'work/16k/spcv2', verbose=False)
 
 
+def convert_fsd50k(root, config_path):
+    convert_wav(root, 'work/16k/fsd50k_dev', config_path=config_path, verbose=False)
+
 if __name__ == "__main__":
-    Path('work/metadata').mkdir(parents=True, exist_ok=True)
+    # Path('work/metadata').mkdir(parents=True, exist_ok=True)
+    # Path('work/16k').mkdir(parents=True, exist_ok=True)
+    # fire.Fire()
+
     Path('work/16k').mkdir(parents=True, exist_ok=True)
-    fire.Fire()
+    root = "/media/storage/home/22828187/datasets/FSD50K/FSD50K.dev_audio"
+    convert_fsd50k(root, config_path="/media/storage/home/22828187/work_dir/audio_ssl/v2/config_v2.yaml")
