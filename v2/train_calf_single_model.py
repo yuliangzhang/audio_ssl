@@ -160,7 +160,7 @@ class BYOLALearner(pl.LightningModule):
         # self.log("combine_loss2", combine_loss2)
         # combine_loss = (combine_loss1 + combine_loss2).mean()
         combine_loss = (combine_loss1 + combine_loss2) / 2.0
-        total_loss = loss_global + loss_local + combine_loss
+        total_loss = loss_global + loss_local + combine_loss * self.cfg.combine_loss_weight
 
         self.log("total_loss", total_loss)
         self.log("global_loss", loss_global)

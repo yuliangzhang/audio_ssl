@@ -16,7 +16,7 @@ proj_dim: 4096
 ema_decay: 0.99
 # Training parameters.
 seed: 42
-bs: 24
+bs: 128
 lr: 0.0001
 epochs: 500
 gpus: 1
@@ -31,3 +31,4 @@ win_adapt: True
 win_size: 1.2
 # Folder to store trained weight files.
 checkpoint_folder: checkpoints
+combine_loss_weight: 10
