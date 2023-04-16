@@ -413,7 +413,7 @@ def main(audio_dir, config_path='config_calf.yaml', d=None, epochs=None, resume=
 
 if __name__ == '__main__':
     # fire.Fire(main)
-    ckpt_file = "../pretrained_weights/epoch_131.ckpt"
+    ckpt_file = "/home/ubuntu/work_dir/audio_ssl/v2/lightning_logs/version_8/checkpoints/epoch_140.ckpt"
     config_path = "config_calf.yaml"
     cfg = load_yaml_config(config_path)
     complete_cfg(cfg)

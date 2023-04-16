@@ -16,9 +16,9 @@ proj_dim: 4096
 ema_decay: 0.99
 # Training parameters.
 seed: 42
-bs: 256
+bs: 24
 lr: 0.0001
-epochs: 100
+epochs: 500
 gpus: 1
 num_workers: 8
 # Weight pathname for resuming training.
