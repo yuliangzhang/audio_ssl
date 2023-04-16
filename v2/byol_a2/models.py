@@ -174,11 +174,13 @@ class TCNModel(nn.Module):
 
     def forward(self, inputs):
         # TCN model results
+        if len(inputs.shape) == 4:
+            inputs = inputs.squeeze(1)
         outputs = self.tcn(inputs)
 
         # keep the time dimension inform
 
-        outputs = outputs.permute(0, 2, 1) # Batch,Time,Dimension
+        # outputs = outputs.permute(0, 2, 1) # Batch,Time,Dimension
 
         embedding = mean_max_pooling(outputs)
 

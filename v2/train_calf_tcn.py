@@ -74,6 +74,7 @@ class BYOLALearner(pl.LightningModule):
             verbose=False,
         )
         self.linear_combine_loss = torch.nn.MSELoss()
+        # self.linear_combine_loss = loss_fn
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.85)
@@ -87,7 +88,7 @@ class BYOLALearner(pl.LightningModule):
         self.to_spec.to(self.device, non_blocking=True)
         self.global_learner.to(self.device, non_blocking=True)
         self.local_learner.to(self.device, non_blocking=True)
-        self.linear_combine.to(self.device, non_blocking=True)
+        # self.linear_combine.to(self.device, non_blocking=True)
         # self.linear_combine_loss.to(self.device, non_blocking=True)
 
         lms_batch = (self.to_spec(wavs) + torch.finfo().eps).log().unsqueeze(1)
@@ -121,7 +122,8 @@ class BYOLALearner(pl.LightningModule):
         combine_loss2 = self.linear_combine_loss(global_proj2, local_proj2)
 
         combine_loss = (combine_loss1 + combine_loss2) / 2.0
-        total_loss = loss_global + loss_local + combine_loss * self.config
+        # combine_loss = combine_loss.mean()
+        total_loss = loss_global + loss_local + combine_loss * self.cfg.combine_loss_weight
 
         self.log("total_loss", total_loss)
         self.log("global_loss", loss_global)
@@ -133,8 +135,8 @@ class BYOLALearner(pl.LightningModule):
         for k, v in {'mb': mb, 'sb': sb, 'ma': ma, 'sa': sa}.items():
             self.log(k, float(v), prog_bar=True, on_step=False, on_epoch=True)
 
-        # print("total_loss=", total_loss.item(), " global_loss=", loss_global.item(), " local_loss=", loss_local.item(),
-        #       " combine_loss=", combine_loss.item())
+        print("\ntotal_loss=", total_loss.item(), " global_loss=", loss_global.item(), " local_loss=", loss_local.item(),
+              " combine_loss=", combine_loss.item())
         return total_loss
 
     def configure_optimizers(self):
@@ -169,7 +171,8 @@ def complete_cfg(cfg):
     return cfg
 
 
-def main(audio_dir, config_path='config_calf_tcn.yaml', d=None, epochs=None, resume=None) -> None:
+def main(config_path='config_calf_tcn.yaml', d=None, epochs=None, resume=None) -> None:
+    audio_dir_list = ["../work/16k/fsd50k/FSD50K.dev_audio"]
     cfg = load_yaml_config(config_path)
     # Override configs
     cfg.feature_d = d or cfg.feature_d
@@ -182,7 +185,12 @@ def main(audio_dir, config_path='config_calf_tcn.yaml', d=None, epochs=None, res
     logging.info(cfg)
     seed_everything(cfg.seed)
     # Data preparation
-    files = sorted(Path(audio_dir).glob('*.wav'))
+    files = []
+    for audio_dir in audio_dir_list:
+        files.extend(Path(audio_dir).glob('*.wav'))
+        # files = sorted(Path(audio_dir).glob('*.wav'))
+
+    files = sorted(files)
     tfms = AugmentationModule(epoch_samples=2 * len(files))
     ds = WavDataset(cfg, files, labels=None, tfms=None, random_crop=True)
     dl = torch.utils.data.DataLoader(ds, batch_size=cfg.bs,
