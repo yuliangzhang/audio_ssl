@@ -33,6 +33,10 @@ import fire
 import logging
 import nnAudio.features
 from copy import deepcopy
+import math
+import os
+
+from codecarbon import EmissionsTracker
 
 class AugmentationModule:
     """BYOL-A augmentation module example, the same parameter with the paper."""
@@ -52,14 +56,23 @@ class AugmentationModule:
 class BYOLALearner(pl.LightningModule):
     """BYOL-A learner. Shows batch statistics for each epochs."""
 
-    def __init__(self, cfg, model, tfms, **kwargs):
+    def __init__(self, cfg, model, tfms, local_tfms, **kwargs):
         super().__init__()
         self.cfg = cfg
+
+        try:
+            log_dir = self.logger.log_dir
+        except Exception as e:
+            log_dir = cfg["log_dir"]
+        self.exp_dir = log_dir
+
+
         self.global_learner = BYOL(model, image_size=cfg.shape_global, **kwargs)
         tcn = TCNModel(**cfg["tcn_net"])
-        self.local_learner = BYOL(tcn, image_size=cfg.shape_global, **kwargs)
+        self.local_learner = BYOL(tcn, image_size=cfg.shape_local, **kwargs)
         self.lr = cfg.lr
         self.tfms = tfms
+        self.local_tfms = local_tfms
         self.post_norm = NormalizeBatch()
         self.to_spec = nnAudio.features.MelSpectrogram(
             sr=cfg.sample_rate,
@@ -73,11 +86,48 @@ class BYOLALearner(pl.LightningModule):
             power=2,
             verbose=False,
         )
+
+        hop_length = int(cfg.hop_size * cfg.sample_rate)
+        n_frames = math.ceil(cfg.unit_sec / cfg.hop_size)
+        clip_audio_win = int(cfg.sample_rate * cfg.win_size)
+        last_idx = cfg.sample_rate * cfg.unit_sec
+
+
+        slice_list = []
+        padding_flag = False
+        padding_len = last_idx
+
+        for frame_idx in range(n_frames):
+            start_idx = frame_idx * hop_length
+            end_idx = start_idx + clip_audio_win
+            slice_list.append((start_idx, end_idx))
+
+            if end_idx > padding_len:
+                padding_flag = True
+                padding_len = end_idx
+
+        self.n_frames = n_frames
+        # whether the audio will be padded
+        self.padding_len = int(padding_len - last_idx)
+        self.padding_flag = padding_flag
+        # sub-audio segments localization
+        self.slice_list = slice_list
+
         self.linear_combine_loss = torch.nn.MSELoss()
         # self.linear_combine_loss = loss_fn
 
+        self.linear_combine = torch.nn.Linear(cfg["tcn_net"]["num_channels"][-1] * n_frames, 256)
+
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=20, gamma=0.85)
+
+    # def on_train_start(self) -> None:
+
+        # os.makedirs(os.path.join(self.exp_dir, "training_codecarbon"), exist_ok=True)
+        # self.tracker_train = EmissionsTracker("CAFL CONTRASTIVE SED TRAINING",
+        #                                       output_dir=os.path.join(self.exp_dir,
+        #                                                               "training_codecarbon"))
+        # self.tracker_train.start()
 
     def forward(self, images1, images2):
         return self.learner(images1, images2)
@@ -88,12 +138,27 @@ class BYOLALearner(pl.LightningModule):
         self.to_spec.to(self.device, non_blocking=True)
         self.global_learner.to(self.device, non_blocking=True)
         self.local_learner.to(self.device, non_blocking=True)
-        # self.linear_combine.to(self.device, non_blocking=True)
-        # self.linear_combine_loss.to(self.device, non_blocking=True)
+        self.linear_combine.to(self.device, non_blocking=True)
+        self.linear_combine_loss.to(self.device, non_blocking=True)
+
+        # split wavs into sub wavs
+        # [2] get local embeddings
+        if self.padding_flag:
+            padded_audios = torch.nn.functional.pad(
+                wavs, (0, self.padding_len), mode="constant")
+        else:
+            padded_audios = wavs
+
+        # combine all the splitted sub-audio togethers
+        split_audio_list = [padded_audios[:, start_idx:end_idx] for start_idx, end_idx in self.slice_list]
+        split_audio_combine = torch.cat(split_audio_list, dim=0)
 
         lms_batch = (self.to_spec(wavs) + torch.finfo().eps).log().unsqueeze(1)
-        lms_batch = lms_batch[:, :, :, 0:self.cfg.shape_global[1]]
+        sub_lms_batch = (self.to_spec(split_audio_combine) + torch.finfo().eps).log().unsqueeze(1)
+
         lms_batch = self.pre_norm(lms_batch)
+        sub_lms_batch = self.pre_norm(sub_lms_batch)
+
         # Create two augmented views.
         images1, images2 = [], []
         for lms in lms_batch:
@@ -102,6 +167,17 @@ class BYOLALearner(pl.LightningModule):
         images1 = torch.stack(images1)
         images2 = torch.stack(images2)
         paired_inputs = (images1, images2)
+
+        # Create two augmented sub views.
+        sub_images1, sub_images2 = [], []
+        for sub_lms in sub_lms_batch:
+            img1, img2 = self.local_tfms(sub_lms)
+            sub_images1.append(img1), sub_images2.append(img2)
+
+        sub_images1 = torch.stack(sub_images1)
+        sub_images2 = torch.stack(sub_images2)
+        sub_paired_inputs = (sub_images1, sub_images2)
+
         # Form a batch and post-normalize it.
         bs = paired_inputs[0].shape[0]
         paired_inputs = torch.cat(paired_inputs) # [(B,1,T,F), (B,1,T,F)] -> (2*B,1,T,F)
@@ -113,13 +189,38 @@ class BYOLALearner(pl.LightningModule):
         global_frame1 = paired_inputs[:bs]
         global_frame2 = paired_inputs[bs:]
 
+        # Form a batch and post-normalize it.
+        sub_bs = sub_paired_inputs[0].shape[0]
+        sub_paired_inputs = torch.cat(sub_paired_inputs)  # [(B,1,T,F), (B,1,T,F)] -> (2*B,1,T,F)
+        sub_paired_inputs = self.post_norm(sub_paired_inputs)
+
+        # split the mel frames into sub-mel frames
+        local_frame1 = sub_paired_inputs[:sub_bs]
+        local_frame2 = sub_paired_inputs[sub_bs:]
+
+
         # Forward to get a loss.
         loss_global, global_proj1, global_proj2 = self.global_learner(global_frame1, global_frame2)
-        loss_local, local_proj1, local_proj2 = self.local_learner(global_frame1, global_frame1)
+        loss_local, local_proj1, local_proj2 = self.local_learner(local_frame1, local_frame2)
+
+        local_proj1_list = torch.split(local_proj1, split_size_or_sections=bs, dim=0)
+        local_proj2_list = torch.split(local_proj2, split_size_or_sections=bs, dim=0)
+
+        local_proj1 = torch.stack(local_proj1_list, dim=1).to(torch.float32)
+        local_proj2 = torch.stack(local_proj2_list, dim=1).to(torch.float32)
+
+        local_proj1_combine = torch.unbind(local_proj1, dim=1)
+        local_proj2_combine = torch.unbind(local_proj2, dim=1)
+
+        local_proj1_combine = torch.cat(local_proj1_combine, dim=1)
+        local_proj2_combine = torch.cat(local_proj2_combine, dim=1)
+
+        final_local_proj1 = self.linear_combine(local_proj1_combine)
+        final_local_proj2 = self.linear_combine(local_proj2_combine)
 
 
-        combine_loss1 = self.linear_combine_loss(global_proj1, local_proj1)
-        combine_loss2 = self.linear_combine_loss(global_proj2, local_proj2)
+        combine_loss1 = self.linear_combine_loss(global_proj1, final_local_proj1)
+        combine_loss2 = self.linear_combine_loss(global_proj2, final_local_proj2)
 
         combine_loss = (combine_loss1 + combine_loss2) / 2.0
         # combine_loss = combine_loss.mean()
@@ -171,7 +272,7 @@ def complete_cfg(cfg):
     return cfg
 
 
-def main(config_path='config_calf_tcn.yaml', d=None, epochs=None, resume=None) -> None:
+def main(config_path='config_calf_tcn_split.yaml', d=None, epochs=None, resume=None) -> None:
     audio_dir_list = ["../work/16k/fsd50k_dev"]
     cfg = load_yaml_config(config_path)
     # Override configs
@@ -192,6 +293,7 @@ def main(config_path='config_calf_tcn.yaml', d=None, epochs=None, resume=None) -
 
     files = sorted(files)
     tfms = AugmentationModule(epoch_samples=2 * len(files))
+    local_tfms = AugmentationModule(epoch_samples=2 * len(files))
     ds = WavDataset(cfg, files, labels=None, tfms=None, random_crop=True)
     dl = torch.utils.data.DataLoader(ds, batch_size=cfg.bs,
                 num_workers=multiprocessing.cpu_count(),
@@ -204,7 +306,7 @@ def main(config_path='config_calf_tcn.yaml', d=None, epochs=None, resume=None) -
     if cfg.resume is not None:
         load_pretrained_weights(model, cfg.resume)
     # Training
-    learner = BYOLALearner(cfg, model, tfms=tfms,
+    learner = BYOLALearner(cfg, model, tfms=tfms, local_tfms=local_tfms,
         hidden_layer=-1,
         projection_size=cfg.proj_size,
         projection_hidden_size=cfg.proj_dim,

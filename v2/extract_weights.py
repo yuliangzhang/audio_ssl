@@ -24,7 +24,7 @@ Example of training on FSD50K dataset:
 from byol_a2.common import (np, Path, torch,
      get_logger, load_yaml_config, seed_everything, get_timestamp, hash_text)
 from byol_a2.byol_pytorch_modified import BYOL, loss_fn
-from byol_a2.models import AudioNTT2022, load_pretrained_weights
+from byol_a2.models import AudioNTT2022, TCNModel, load_pretrained_weights
 from byol_a2.augmentations import (RandomResizeCrop, MixupBYOLA, RandomLinearFader, NormalizeBatch, PrecomputedNorm)
 from byol_a2.dataset import WavDataset
 import multiprocessing
@@ -413,12 +413,13 @@ def main(audio_dir, config_path='config_calf.yaml', d=None, epochs=None, resume=
 
 if __name__ == '__main__':
     # fire.Fire(main)
-    ckpt_file = "/home/ubuntu/work_dir/audio_ssl/v2/lightning_logs/version_8/checkpoints/epoch_140.ckpt"
-    config_path = "config_calf.yaml"
+    ckpt_file = "/media/storage/home/22828187/work_dir/audio_ssl/v2/lightning_logs/version_3/checkpoints/epoc_8.ckpt"
+    config_path = "config_calf_tcn.yaml"
     cfg = load_yaml_config(config_path)
     complete_cfg(cfg)
-    model = AudioNTT2022(n_mels=cfg.n_mels, d=cfg.feature_d)
-    model_key = "global_learner.net"
+    # model = AudioNTT2022(n_mels=cfg.n_mels, d=cfg.feature_d)
+    model = TCNModel(**cfg["tcn_net"])
+    model_key = "local_learner.net"
 
     state_dict = torch.load(ckpt_file)
     if 'state_dict' in state_dict:
@@ -450,7 +451,7 @@ if __name__ == '__main__':
     print(str(model.load_state_dict(weights, strict=True)))
 
     # Saving trained weight.
-    to_file = Path(cfg.checkpoint_folder)/(cfg.id+'.pth')
+    to_file = Path(cfg.checkpoint_folder)/("TCNModel_k_5_l_7_epoch_8_202304171203"+'.pth')
     to_file.parent.mkdir(exist_ok=True, parents=True)
     torch.save(model.state_dict(), to_file)
 

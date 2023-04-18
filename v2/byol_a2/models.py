@@ -180,7 +180,7 @@ class TCNModel(nn.Module):
 
         # keep the time dimension inform
 
-        # outputs = outputs.permute(0, 2, 1) # Batch,Time,Dimension
+        outputs = outputs.permute(0, 2, 1) # Batch,Time,Dimension
 
         embedding = mean_max_pooling(outputs)
 

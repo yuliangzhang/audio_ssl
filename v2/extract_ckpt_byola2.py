@@ -2,7 +2,7 @@ import torch
 from byol_a2.models import AudioNTT2022
 from byol_a2.common import load_yaml_config
 if __name__ == '__main__':
-    ckpt_file = "/home/ubuntu/work_dir/audio_ssl/v2/lightning_logs/version_4/checkpoints/epoch_131.ckpt"
+    ckpt_file = "/home/ubuntu/work_dir/audio_ssl/v2/lightning_logs/version_3/checkpoints/epoch_8.ckpt"
     # config_path = 'config_calf.yaml'
     # model_key = ""
     #
