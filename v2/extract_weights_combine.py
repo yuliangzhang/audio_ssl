@@ -414,27 +414,30 @@ def main(audio_dir, config_path='config_calf.yaml', d=None, epochs=None, resume=
 
 if __name__ == '__main__':
     # fire.Fire(main)
-    ckpt_file = "/media/storage/home/22828187/work_dir/audio_ssl/v2/lightning_logs/version_8/checkpoints/epoch_cnn14_1.ckpt"
+    ckpt_file_global = "/media/storage/home/22828187/work_dir/audio_ssl/v2/checkpoints/cnn14_audio_ssl_global_202304201946.pth"
+    ckpt_file_local = "/media/storage/home/22828187/work_dir/audio_ssl/v2/checkpoints/cnn14_audio_ssl_local_202304201946.pth"
     config_path = "config_calf_cnn14_split.yaml"
     cfg = load_yaml_config(config_path)
     complete_cfg(cfg)
     # model = AudioNTT2022(n_mels=cfg.n_mels, d=cfg.feature_d)
     model = Cnn14_Decoupled(n_mels=cfg.n_mels, d=cfg.feature_d)
-    model_key = "global_learner.net"
 
-    state_dict = torch.load(ckpt_file)
-    if 'state_dict' in state_dict:
-        state_dict = state_dict['state_dict']
-    if 'model' in state_dict:
-        state_dict = state_dict['model']
+
+    global_state_dict = torch.load(ckpt_file_global)
+    if 'state_dict' in global_state_dict:
+        global_state_dict = global_state_dict['state_dict']
+    if 'model' in global_state_dict:
+        global_state_dict = global_state_dict['model']
+
+
+    local_state_dict = torch.load(ckpt_file_local)
+    if 'state_dict' in local_state_dict:
+        local_state_dict = local_state_dict['state_dict']
+    if 'model' in local_state_dict:
+        local_state_dict = local_state_dict['model']
+
     children = sorted([n + '.' for n, _ in model.named_children()])
 
-    # 'model.xxx' -> 'xxx"
-    weights = {}
-    for k in state_dict:
-        if k.startswith(model_key+'.'):
-            weights[k[len(model_key)+1:]] = state_dict[k]
-    state_dict = weights
 
     # model's parameter only
     def find_model_prm(k):
@@ -444,15 +447,15 @@ if __name__ == '__main__':
         return None
 
     weights = {}
-    for k in state_dict:
+    for k in global_state_dict:
         if find_model_prm(k) is None: continue
-        weights[k] = state_dict[k]
+        weights[k] = (global_state_dict[k] + local_state_dict[k]) / 2
 
     print(list(weights.keys()))
     print(str(model.load_state_dict(weights, strict=True)))
 
     # Saving trained weight.
-    to_file = Path(cfg.checkpoint_folder)/("cnn14_audio_ssl_global_202304201946"+'.pth')
+    to_file = Path(cfg.checkpoint_folder)/("cnn14_audio_ssl_combine_202304201946"+'.pth')
     to_file.parent.mkdir(exist_ok=True, parents=True)
     torch.save(model.state_dict(), to_file)
 
