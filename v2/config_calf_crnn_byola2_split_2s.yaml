@@ -1,0 +1,61 @@
+# Unit duration in seconds for one audio segment.
+unit_sec: 2.0
+# FFT parameters.
+sample_rate: 16000
+n_fft: 1024
+win_length: 1024
+hop_length: 160
+n_mels: 64
+f_min: 60
+f_max: 7800
+# Dimensions of feature representations.
+feature_d: 2048
+# BYOL parameters.
+proj_size: 256
+proj_dim: 2048
+ema_decay: 0.99
+# Training parameters.
+seed: 42
+bs: 32
+lr: 0.0001
+epochs: 500
+gpus: 1
+num_workers: 8
+# Weight pathname for resuming training.
+#resume: /media/storage/home/22828187/work_dir/eval-sed-repr/recipes/dcase2022_task4_baseline/pretrained_models/Cnn14_16k_mAP=0.438.pth
+# Shape of loh-mel spectrogram [F, T].
+shape_global: [64, 200]
+shape_local: [64, 50]
+hop_size: 0.5
+win_adapt: True
+win_size: 0.5
+# Folder to store trained weight files.
+checkpoint_folder: checkpoints
+combine_loss_weight: 10
+
+log_dir: ./exp/calf_sed_train/
+
+tcn_net:
+  input_size: 64
+  num_channels: [32, 64, 128, 256, 256]
+  dropout: 0.2
+  kernel_size: 5
+
+
+net:
+  dropout: 0.5
+  rnn_layers: 2
+  n_in_channel: 1
+  n_class: 512
+  attention: True
+  n_RNN_cell: 128
+  activation: glu
+  rnn_type: BGRU
+  kernel_size: [3, 3, 3, 3, 3, 3, 3]
+  padding: [1, 1, 1, 1, 1, 1, 1]
+  stride: [1, 1, 1, 1, 1, 1, 1]
+  nb_filters: [ 16, 32, 64, 128, 128, 128, 128]
+  pooling: [ [ 2, 2 ], [ 2, 2 ], [ 1, 2 ], [ 1, 2 ], [ 1, 2 ], [ 1, 2 ], [ 1, 1 ] ]
+  dropout_recurrent: 0
+  use_embeddings: False
+
